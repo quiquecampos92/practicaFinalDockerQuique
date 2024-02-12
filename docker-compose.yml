@@ -1,0 +1,91 @@
+version: '3'
+
+services:
+  adminMongo-container:
+    image: mongo-express:latest
+    container_name: adminMongo-container
+    restart: unless-stopped
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: quique
+      ME_CONFIG_MONGODB_ADMINPASSWORD: quique1234
+      ME_CONFIG_MONGODB_SERVER: mongo-container
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_BASICAUTH_USERNAME: mongoexpress
+      ME_CONFIG_BASICAUTH_PASSWORD: mongoexpress
+      ME_CONFIG_MONGODB_URL: mongo-container://quique:quique1234@mongo-container:27017/?authSource=admin
+    depends_on:
+      mongo-container:
+        condition: service_healthy
+    networks:
+      - practica_net
+
+  mongo-container:
+    image: mongo:latest
+    container_name: mongo-container
+    restart: always
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: quique
+      MONGO_INITDB_ROOT_PASSWORD: quique1234
+      MONGO_INITDB_DATABASE: cinema
+    hostname: mongo-container
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "127.0.0.1/mongo-container",
+          "--eval",
+          "'quit(db.runCommand({ ping: 1 }).ok ? 0 : 2)'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    volumes:
+      - ./mongo/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      - ./mongo/mongodump.sh:/docker-entrypoint-initdb.d/mongodump.sh:ro
+      - ./mongo/mongorestore.sh:/docker-entrypoint-initdb.d/mongorestore.sh
+      - ./mongo/db-dump:/db-dump
+    networks:
+      - practica_net
+
+  backend_container:
+    image: node:19-alpine
+    container_name: backend_container
+    working_dir: /app
+    command: sh -c "yarn install && node index.js"
+    ports:
+    - 5000:3000
+    volumes:
+      - ./server:/app
+    depends_on:
+      - mongo-container
+      - adminMongo-container
+    networks:
+      - practica_net
+
+
+  frontend_container:
+    image: node:19-alpine
+    container_name: frontend_container
+    working_dir: /app
+    command: sh -c "npm install && npm start"
+    ports:
+     - 8999:8000
+    volumes:
+      - ./client:/app
+    depends_on:
+      - backend_container
+    networks:
+      - practica_net
+
+
+
+
+networks:
+  practica_net:
